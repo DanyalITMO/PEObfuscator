@@ -1,0 +1,3 @@
+[submodule "ObfuseConfuse"]
+	path = ObfuseConfuse
+	url = https://github.com/DanyalITMO/ObfuseConfuse
