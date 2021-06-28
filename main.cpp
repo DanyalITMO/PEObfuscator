@@ -191,18 +191,28 @@ bool writePEFile(IMAGE_DOS_HEADER* source_dos_header, IMAGE_NT_HEADERS* source_i
     out_file.resize(out_file.size() + source_image_header->OptionalHeader.SizeOfHeaders);
     memcpy(out_file.data(), file_content.data(), source_image_header->OptionalHeader.SizeOfHeaders);
 
+    auto* dst_dos_header = getDosHeader(out_file.data());
+    if (!dst_dos_header)
+        return -1;
+    auto* dst_image_header = getNtHeader(dst_dos_header);
+    if (!dst_image_header)
+        return -1;
+
+
     //copy sections
     IMAGE_SECTION_HEADER* section_header = nullptr;
     for (std::size_t i = 0; i < source_image_header->FileHeader.NumberOfSections; i++) {
 
         //IMAGE_NT_HEADERS64 kostil, nees to fix
-        section_header = reinterpret_cast<IMAGE_SECTION_HEADER*>(file_content.data() + source_dos_header->e_lfanew +sizeof(IMAGE_NT_HEADERS64) +
+        section_header = reinterpret_cast<IMAGE_SECTION_HEADER*>(out_file.data() + dst_dos_header->e_lfanew +sizeof(IMAGE_NT_HEADERS64) +
                                                                  (sizeof(IMAGE_SECTION_HEADER) * i));
         std::cout << "section " << i << ": " << section_header->Name << ", RVA: " << std::hex
                   << section_header->VirtualAddress << " size of raw data: " << section_header->SizeOfRawData<<std::endl;
 
         if(i == 0)
         {
+            section_header->Characteristics = IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE;
+
             auto&& from =  file_content.data() + section_header->PointerToRawData;
             std::vector<byte> code{from,from + /*section_header->SizeOfRawData*/ section_header->Misc.VirtualSize};
             auto encoded = obfuseCode(code);
