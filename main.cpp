@@ -100,10 +100,9 @@ bool writePEFile(IMAGE_DOS_HEADER* source_dos_header, IMAGE_NT_HEADERS* source_i
     //copy headers
 
     std::vector<byte> out_file;
-    out_file.reserve(file_content.size());
+    out_file.reserve(file_content.size() + 5000); // in order to exclude exclude
 
-    out_file.resize(out_file.size() + source_image_header->OptionalHeader.SizeOfHeaders);
-    memcpy(out_file.data(), file_content.data(), source_image_header->OptionalHeader.SizeOfHeaders);
+    out_file.insert(std::end(out_file), std::begin(file_content), std::begin(file_content) + source_image_header->OptionalHeader.SizeOfHeaders);
 
     auto* dst_dos_header = getDosHeader(out_file.data());
     if (!dst_dos_header)
@@ -117,11 +116,9 @@ bool writePEFile(IMAGE_DOS_HEADER* source_dos_header, IMAGE_NT_HEADERS* source_i
     IMAGE_SECTION_HEADER* dst_section_header = nullptr;
     IMAGE_SECTION_HEADER* src_section_header = nullptr;
 
-    int offset = 0;
-
     for (std::size_t i = 0; i < source_image_header->FileHeader.NumberOfSections; i++) {
 
-        //IMAGE_NT_HEADERS64 kostil, nees to fix
+        //IMAGE_NT_HEADERS64 kostil, need to fix build
         src_section_header = reinterpret_cast<IMAGE_SECTION_HEADER*>(file_content.data() + source_dos_header->e_lfanew + sizeof(IMAGE_NT_HEADERS64) +
                                                                      (sizeof(IMAGE_SECTION_HEADER) * i));
 
@@ -130,7 +127,6 @@ bool writePEFile(IMAGE_DOS_HEADER* source_dos_header, IMAGE_NT_HEADERS* source_i
         std::cout << "section " << i << ": " << dst_section_header->Name << ", RVA: " << std::hex
                   << dst_section_header->VirtualAddress << " size of raw data: " << dst_section_header->SizeOfRawData << std::endl;
 
-//        dst_section_header->PointerToRawData += offset;
 
         if(source_image_header->OptionalHeader.AddressOfEntryPoint >= dst_section_header->VirtualAddress &&
            source_image_header->OptionalHeader.AddressOfEntryPoint <= dst_section_header->VirtualAddress + dst_section_header->Misc.VirtualSize)
@@ -142,18 +138,18 @@ bool writePEFile(IMAGE_DOS_HEADER* source_dos_header, IMAGE_NT_HEADERS* source_i
             auto encoded = obfuseCode(code);
 
             //---
-            std::vector<byte> placeholder(0x200, 0x90);
+            std::vector<byte> placeholder(0x400, 0x90);
             encoded.insert(std::end(encoded), std::begin(placeholder), std::end(placeholder));
             //----
 
-            while(encoded.size() > dst_section_header->SizeOfRawData)
+            /*while(encoded.size() > dst_section_header->SizeOfRawData)
             {
                 dst_section_header->SizeOfRawData += 0x200;
-                offset += 0x200;
-            }
-            encoded.resize(encoded.size() + (encoded.size() % 0x200));//padding with zero
+            }*/
+            encoded.resize(encoded.size() + (0x200 - (encoded.size() % 0x200)));//padding with zero
+            dst_section_header->SizeOfRawData = encoded.size();
 
-            out_file.insert(std::end(out_file), encoded.data(), encoded.data() + dst_section_header->SizeOfRawData);
+            out_file.insert(std::end(out_file), std::begin(encoded), std::end(encoded)); // .data() + dst_section_header->SizeOfRawData
         }
         else {
             dst_section_header->PointerToRawData = out_file.size();
@@ -186,32 +182,7 @@ int main() {
     if (!src_image_header)
         return -1;
 
-//    byte_t* proc = new byte_t[src_image_header->OptionalHeade
-//    r.SizeOfImage];
-
     writePEFile(src_dos_header, src_image_header, file_content);
-//    if (!prepareProcMemory(src_dos_header, src_image_header, file_content, proc))
-//        return -1;
-/*
-    auto* dst_dos_header = getDosHeader(proc);
-    auto* dst_image_header = getNtHeader(dst_dos_header);
 
-    DWORD old_image_base = dst_image_header->OptionalHeader.ImageBase;
-    dst_image_header->OptionalHeader.ImageBase = reinterpret_cast<DWORD>(proc);
-
-    proceccImport(dst_image_header);
-    processRealloc(dst_image_header, old_image_base);
-*/
-//    HookGetModuleHandle();
-
-//    auto ret = GetModuleHandleA(NULL);
-//    std::cerr << std::hex << "ret: " << ret << std::endl;
-/*
-    DWORD* va_entry_point = reinterpret_cast<DWORD*>(dst_image_header->OptionalHeader.ImageBase +
-                                                     dst_image_header->OptionalHeader.AddressOfEntryPoint);
-
-    __asm { mov eax, va_entry_point }
-    __asm { jmp eax }
-*/
     return 0;
 }
