@@ -107,45 +107,58 @@ bool writePEFile(IMAGE_DOS_HEADER* source_dos_header, IMAGE_NT_HEADERS* source_i
 
     auto* dst_dos_header = getDosHeader(out_file.data());
     if (!dst_dos_header)
-        return -1;
+        return false;
     auto* dst_image_header = getNtHeader(dst_dos_header);
     if (!dst_image_header)
-        return -1;
+        return false;
 
 
     //copy sections
-    IMAGE_SECTION_HEADER* section_header = nullptr;
+    IMAGE_SECTION_HEADER* dst_section_header = nullptr;
+    IMAGE_SECTION_HEADER* src_section_header = nullptr;
+
+    int offset = 0;
+
     for (std::size_t i = 0; i < source_image_header->FileHeader.NumberOfSections; i++) {
 
         //IMAGE_NT_HEADERS64 kostil, nees to fix
-        section_header = reinterpret_cast<IMAGE_SECTION_HEADER*>(out_file.data() + dst_dos_header->e_lfanew +sizeof(IMAGE_NT_HEADERS64) +
-                                                                 (sizeof(IMAGE_SECTION_HEADER) * i));
-        std::cout << "section " << i << ": " << section_header->Name << ", RVA: " << std::hex
-                  << section_header->VirtualAddress << " size of raw data: " << section_header->SizeOfRawData<<std::endl;
+        src_section_header = reinterpret_cast<IMAGE_SECTION_HEADER*>(file_content.data() + source_dos_header->e_lfanew + sizeof(IMAGE_NT_HEADERS64) +
+                                                                     (sizeof(IMAGE_SECTION_HEADER) * i));
 
-        if(source_image_header->OptionalHeader.AddressOfEntryPoint >= section_header->VirtualAddress &&
-        source_image_header->OptionalHeader.AddressOfEntryPoint <= section_header->VirtualAddress + section_header->Misc.VirtualSize)
+        dst_section_header = reinterpret_cast<IMAGE_SECTION_HEADER*>(out_file.data() + dst_dos_header->e_lfanew + sizeof(IMAGE_NT_HEADERS64) +
+                                                                     (sizeof(IMAGE_SECTION_HEADER) * i));
+        std::cout << "section " << i << ": " << dst_section_header->Name << ", RVA: " << std::hex
+                  << dst_section_header->VirtualAddress << " size of raw data: " << dst_section_header->SizeOfRawData << std::endl;
+
+//        dst_section_header->PointerToRawData += offset;
+
+        if(source_image_header->OptionalHeader.AddressOfEntryPoint >= dst_section_header->VirtualAddress &&
+           source_image_header->OptionalHeader.AddressOfEntryPoint <= dst_section_header->VirtualAddress + dst_section_header->Misc.VirtualSize)
         {
-            section_header->Characteristics = IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE;
+            dst_section_header->Characteristics = IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE;
 
-            auto&& from =  file_content.data() + section_header->PointerToRawData;
-            std::vector<byte> code{from,from + /*section_header->SizeOfRawData*/ section_header->Misc.VirtualSize};
+            auto&& from = file_content.data() + dst_section_header->PointerToRawData;
+            std::vector<byte> code{from, from + /*dst_section_header->SizeOfRawData*/ dst_section_header->Misc.VirtualSize};
             auto encoded = obfuseCode(code);
-            if(encoded.size() < section_header->SizeOfRawData)
+
+            //---
+            std::vector<byte> placeholder(0x200, 0x90);
+            encoded.insert(std::end(encoded), std::begin(placeholder), std::end(placeholder));
+            //----
+
+            while(encoded.size() > dst_section_header->SizeOfRawData)
             {
-                encoded.resize(section_header->SizeOfRawData);
-//                memset(encoded.data() + encoded.size(), 0 ,section_header->SizeOfRawData - encoded.size() );
+                dst_section_header->SizeOfRawData += 0x200;
+                offset += 0x200;
             }
-            /*else if(encoded.size() > section_header->SizeOfRawData)
-            {
-                section_header->SizeOfRawData += 0x200;
-                memset(encoded.data() + encoded.size(), 0 ,section_header->SizeOfRawData - encoded.size() );
-            }*/
-            out_file.insert(std::end(out_file), encoded.data(),encoded.data() + section_header->SizeOfRawData);
+            encoded.resize(encoded.size() + (encoded.size() % 0x200));//padding with zero
+
+            out_file.insert(std::end(out_file), encoded.data(), encoded.data() + dst_section_header->SizeOfRawData);
         }
         else {
-            out_file.insert(std::end(out_file), file_content.data() + section_header->PointerToRawData,
-                            file_content.data() + section_header->PointerToRawData + section_header->SizeOfRawData);
+            dst_section_header->PointerToRawData = out_file.size();
+            out_file.insert(std::end(out_file), file_content.data() + src_section_header->PointerToRawData,
+                            file_content.data() + src_section_header->PointerToRawData + src_section_header->SizeOfRawData);
         }
 
 
@@ -164,6 +177,7 @@ int main() {
 //    auto file_content = readBinFile("C:\\reverse\\hw6\\hello2.exe");
 //    auto file_content = readBinFile("C:\\reverse\\graduating\\simple_pe.exe");
     auto file_content = readBinFile("C:\\reverse\\graduating\\hello2.exe");
+//    auto file_content = readBinFile("C:\\reverse\\graduating\\hello3.exe");
 
     auto* src_dos_header = getDosHeader(file_content.data());
     if (!src_dos_header)
