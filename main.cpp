@@ -137,11 +137,6 @@ bool writePEFile(IMAGE_DOS_HEADER* source_dos_header, IMAGE_NT_HEADERS* source_i
             std::vector<byte> code{from, from + /*dst_section_header->SizeOfRawData*/ dst_section_header->Misc.VirtualSize};
             auto encoded = obfuseCode(code);
 
-            //---
-            std::vector<byte> placeholder(0x1000, 0x90);
-            encoded.insert(std::end(encoded), std::begin(placeholder), std::end(placeholder));
-            //----
-
             dst_section_header->Misc.VirtualSize = encoded.size();
             encoded.resize(encoded.size() + (dst_image_header->OptionalHeader.FileAlignment - (encoded.size() % dst_image_header->OptionalHeader.FileAlignment)));//padding with zero
             dst_section_header->SizeOfRawData = encoded.size();
