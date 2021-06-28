@@ -16,38 +16,6 @@
 //#define IMAGE_OS2_SIGNATURE_LE	0x4C45		// LE
 //#define IMAGE_NT_SIGNATURE		0x50450000	// PE00
 
-enum reloc_type {// взято отсюда https://github.com/trailofbits/pe-parse
-    RELOC_ABSOLUTE = 0,
-    RELOC_HIGH = 1,
-    RELOC_LOW = 2,
-    RELOC_HIGHLOW = 3,
-    RELOC_HIGHADJ = 4,
-    RELOC_MIPS_JMPADDR = 5,
-    RELOC_MIPS_JMPADDR16 = 9,
-    RELOC_IA64_IMM64 = 9,
-    RELOC_DIR64 = 10
-};
-
-typedef struct {
-    WORD pointerOffset : 12;
-    WORD flag : 4;
-} FIX_UP, * PFIX_UP;
-
-#pragma comment(linker, "/section:.rdata,RWE")
-#pragma pack(push, 1)
-struct TRUMP
-{
-    BYTE body[5];
-    BYTE jmp = 0xe8;
-    ULONG oldFunc = 0x11223344;
-} *PTRUMP;
-#pragma pack(pop)
-
-
-HMODULE destImageBase = NULL;
-TRUMP trump;
-
-
 using byte_t = unsigned char;
 
 std::vector<byte_t> readBinFile(const std::string& file) {
@@ -84,60 +52,6 @@ IMAGE_NT_HEADERS* getNtHeader(IMAGE_DOS_HEADER* dos_header) {
 
     return image_header;
 }
-
-
-DWORD getPageSize()
-{
-    SYSTEM_INFO sysInfo;
-    GetSystemInfo(&sysInfo);
-
-    return sysInfo.dwPageSize;
-}
-
-bool prepareProcMemory(IMAGE_DOS_HEADER* source_dos_header, IMAGE_NT_HEADERS* source_image_header, std::vector<byte>& file_content, byte_t* proc) {
-    //copy headers
-    memcpy(proc, file_content.data(), source_image_header->OptionalHeader.SizeOfHeaders);
-
-    //copy sections
-    IMAGE_SECTION_HEADER* section_header = nullptr;
-    for (std::size_t i = 0; i < source_image_header->FileHeader.NumberOfSections; i++) {
-        section_header = reinterpret_cast<IMAGE_SECTION_HEADER*>(file_content.data() + source_dos_header->e_lfanew +sizeof(IMAGE_NT_HEADERS) +
-                                                                 (sizeof(IMAGE_SECTION_HEADER) * i));
-        std::cout << "section " << i << ": " << section_header->Name << ", RVA: " << std::hex
-                  << section_header->VirtualAddress << std::endl;
-
-        //source_image_header->OptionalHeader.ImageBase +
-        memcpy(proc + section_header->VirtualAddress,
-               file_content.data() + section_header->PointerToRawData,
-               section_header->SizeOfRawData);
-
-        DWORD old_permission;
-        for (int i = 0; i < section_header->SizeOfRawData; i += getPageSize())
-        {
-            if (!VirtualProtect(reinterpret_cast<LPVOID>(proc + section_header->VirtualAddress + i), 1, PAGE_EXECUTE_READWRITE,
-                                &old_permission)) {
-                std::cerr << "Error: could not change protection" << std::endl;
-                return false;
-            }
-        }
-
-    }
-
-    return true;
-}
-
-
-bool writeBinFile11(const std::string& file, std::vector<byte> const& data) {
-    std::ofstream out(file, std::ios::binary);
-
-    for(auto&& it : data)
-    {
-        out<<it;
-    }
-    out.close();
-    return true;
-}
-
 
 std::vector<byte> obfuseCode(std::vector<byte>& bin_code)
 {
@@ -209,7 +123,8 @@ bool writePEFile(IMAGE_DOS_HEADER* source_dos_header, IMAGE_NT_HEADERS* source_i
         std::cout << "section " << i << ": " << section_header->Name << ", RVA: " << std::hex
                   << section_header->VirtualAddress << " size of raw data: " << section_header->SizeOfRawData<<std::endl;
 
-        if(i == 0)
+        if(source_image_header->OptionalHeader.AddressOfEntryPoint >= section_header->VirtualAddress &&
+        source_image_header->OptionalHeader.AddressOfEntryPoint <= section_header->VirtualAddress + section_header->Misc.VirtualSize)
         {
             section_header->Characteristics = IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE;
 
