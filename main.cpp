@@ -56,16 +56,18 @@ IMAGE_NT_HEADERS* getNtHeader(IMAGE_DOS_HEADER* dos_header) {
 std::vector<byte> obfuseCode(std::vector<byte>& bin_code)
 {
     auto instr_v = decodeBin(bin_code);
-
+/*
+    std::cout<<"!!!\n";
     for(auto&& i : instr_v)
     {
         std::cout<<i<<std::endl;
     }
+    std::cout<<"!!!\n";*/
 
     std::vector<std::unique_ptr<AbstractTextObfuscator>> textObfuscators;
-    textObfuscators.push_back(std::make_unique<Jumper>());
-    textObfuscators.push_back(std::make_unique<Shuffler>());
-    textObfuscators.push_back(std::make_unique<Junk>());
+//    textObfuscators.push_back(std::make_unique<Jumper>());
+//    textObfuscators.push_back(std::make_unique<Shuffler>());
+//    textObfuscators.push_back(std::make_unique<Junk>());
 
     for(auto&& it : textObfuscators)
     {
@@ -164,8 +166,10 @@ int main() {
 //    auto file_content = readFile("C:\\Users\\danek\\CLionProjects\\untitled1\\cmake-build-debug\\untitled1.exe");
 //    auto file_content = readBinFile("C:\\reverse\\hw6\\hello2.exe");
 //    auto file_content = readBinFile("C:\\reverse\\graduating\\simple_pe.exe");
-    auto file_content = readBinFile("C:\\reverse\\graduating\\hello2.exe");
+//    auto file_content = readBinFile("C:\\reverse\\graduating\\hello2.exe");
 //    auto file_content = readBinFile("C:\\reverse\\graduating\\hello3.exe");
+//    auto file_content = readBinFile("C:\\reverse\\graduating\\hello_gui64.exe");
+    auto file_content = readBinFile("C:\\reverse\\graduating\\hello_big.exe");
 
     auto* src_dos_header = getDosHeader(file_content.data());
     if (!src_dos_header)
